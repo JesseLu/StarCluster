@@ -48,6 +48,11 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         # iterate through each machine and count the number of processors
         nodes = nodes or self._nodes
         num_processors = sum(self.pool.map(lambda n: n.num_processors, nodes))
+
+        # Should not count master if master_is_exec_host is set to False.
+        if not self.master_is_exec_host:
+            num_processors -= self._master.num_processors
+
         penv = mssh.remote_file("/tmp/pe.txt", "w")
         penv.write(sge.sge_pe_template % (name, num_processors))
         penv.close()
