@@ -161,8 +161,11 @@ class Node(object):
     def num_processors(self):
         if not self._num_procs:
             self._num_procs = int(
-                self.ssh.execute(
-                    'cat /proc/cpuinfo | grep processor | wc -l')[0])
+                # Modification to count only physical sockets.
+                self.ssh.execute("""cat /proc/cpuinfo | grep "physical id" |
+                    sort | uniq | wc -l """)[0])
+                # self.ssh.execute(
+                #     'cat /proc/cpuinfo | grep processor | wc -l')[0])
         return self._num_procs
 
     @property
