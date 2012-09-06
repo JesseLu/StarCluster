@@ -109,12 +109,22 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         # set all.q shell to bash
         master.ssh.execute('qconf -mattr queue shell "/bin/bash" all.q',
                            source_profile=True)
+
+        # Create the custom maxwell.q.
+        # This assumes 2 processors/GPUs per node.
+        master.ssh.execute("""qconf -sq all.q | sed 's/all.q/maxwell.q/' > /tmp/maxwell_queue && qconf -Aq /tmp/maxwell_queue && qconf -mattr queue slots 2 maxwell.q""", source_profile=True)
+
         for node in self.nodes:
             self._add_sge_admin_host(node)
             self._add_sge_submit_host(node)
             self.pool.simple_job(self._add_to_sge, (node,), jobid=node.alias)
         self.pool.wait(numtasks=len(self.nodes))
-        self._create_sge_pe()
+        self._create_sge_pe(queue='maxwell.q')
+            
+        # Modify the scheduling interval to be 1 second.
+        master.ssh.execute("""qconf -ssconf | sed 's/schedule_interval.*/schedule_interval 1/' > /tmp/ssconf && qconf -Msconf /tmp/ssconf""", source_profile=True)
+        # Modify the load_reporting_time in the configuration to be 0.
+        master.ssh.execute("""qconf -sconf | sed 's/load_report_time.*/load_report_time 0/' > global && qconf -Mconf global""", source_profile=True)
 
     def _remove_from_sge(self, node):
         master = self._master
