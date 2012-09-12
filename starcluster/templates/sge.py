@@ -47,8 +47,8 @@ pe_name           %s
 slots             %s
 user_lists        NONE
 xuser_lists       NONE
-start_proc_args   /bin/true
-stop_proc_args    /bin/true
+start_proc_args   /bin/touch /home/$job_name.start
+stop_proc_args    /bin/touch /home/$job_name.stop
 allocation_rule   $fill_up
 control_slaves    TRUE
 job_is_first_task FALSE
