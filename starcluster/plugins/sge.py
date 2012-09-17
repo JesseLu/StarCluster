@@ -122,7 +122,7 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         self._create_sge_pe(queue='maxwell.q')
             
         # Modify the scheduling interval to be 1 second.
-        master.ssh.execute("""qconf -ssconf | sed 's/schedule_interval.*/schedule_interval 1/' > /tmp/ssconf && qconf -Msconf /tmp/ssconf""", source_profile=True)
+        master.ssh.execute("""qconf -ssconf | sed 's/schedule_interval.*/schedule_interval 1/' | sed 's/weight_tickets_functional.*/weight_tickets_functional 1/' > /tmp/ssconf && qconf -Msconf /tmp/ssconf""", source_profile=True)
         # Modify the load_reporting_time in the configuration to be 0.
         master.ssh.execute("""qconf -sconf | sed 's/load_report_time.*/load_report_time 0/' > global && qconf -Mconf global""", source_profile=True)
 
