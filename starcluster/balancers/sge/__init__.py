@@ -393,7 +393,7 @@ class SGELoadBalancer(LoadBalancer):
         self._cluster = None
         self._keep_polling = True
         self._visualizer = None
-        self.__last_cluster_mod_time = datetime.datetime.utcnow()
+        self.__last_cluster_mod_time = datetime.datetime.utcnow() 
         self.stat = SGEStats()
         self.polling_interval = min(interval, 300)
         self.kill_after = kill_after
@@ -530,13 +530,14 @@ class SGELoadBalancer(LoadBalancer):
             "Failed to retrieve SGE stats after trying %d times, exiting..." %
             retries)
 
-    def run(self, cluster):
+    def run(self, cluster, cm):
         """
         This function will loop indefinitely, using SGELoadBalancer.get_stats()
         to get the clusters status. It looks at the job queue and tries to
         decide whether to add or remove a node.  It should later look at job
         durations (currently doesn't)
         """
+        self._cm = cm
         self._cluster = cluster
         if self.max_nodes is None:
             self.max_nodes = cluster.cluster_size
@@ -618,7 +619,7 @@ class SGELoadBalancer(LoadBalancer):
 
     def has_cluster_stabilized(self):
         now = datetime.datetime.utcnow()
-        elapsed = (now - self.__last_cluster_mod_time).seconds
+        elapsed = (now - self.__last_cluster_mod_time).seconds + 1000
         is_stabilized = not (elapsed < self.stabilization_time)
         if not is_stabilized:
             log.info("Cluster was modified less than %d seconds ago" %
@@ -633,6 +634,8 @@ class SGELoadBalancer(LoadBalancer):
         TODO: See if the recent jobs have taken more than 5 minutes (how
         long it takes to start an instance)
         """
+        self._cluster.add_nodes(1)
+        return
         if len(self.stat.hosts) >= self.max_nodes:
             log.info("Not adding nodes: already at or above maximum (%d)" %
                      self.max_nodes)
@@ -671,6 +674,7 @@ class SGELoadBalancer(LoadBalancer):
                      (need_to_add, str(datetime.datetime.utcnow())))
             try:
                 self._cluster.add_nodes(need_to_add)
+                # self._cm.add_nodes(self._cluster.cluster_tag, need_to_add)
                 self.__last_cluster_mod_time = datetime.datetime.utcnow()
                 log.info("Done adding nodes at %s" %
                          str(datetime.datetime.utcnow()))

@@ -153,7 +153,9 @@ class ClusterManager(managers.Manager):
         """
         Add one or more nodes to cluster
         """
+        print __name__
         cl = self.get_cluster(cluster_name)
+
         return cl.add_nodes(num_nodes, aliases=aliases, image_id=image_id,
                             instance_type=instance_type, zone=zone,
                             placement_group=placement_group, spot_bid=spot_bid,
@@ -727,6 +729,7 @@ class Cluster(object):
         settings if not provided. Passing force_flat=True ignores spot_bid
         completely forcing a flat-rate instance to be requested.
         """
+        print __name__, self.spot_bid
         spot_bid = spot_bid or self.spot_bid
         if force_flat:
             spot_bid = None
@@ -745,14 +748,18 @@ class Cluster(object):
                       user_data='|'.join(aliases),
                       placement_group=placement_group)
         resvs = []
+        print 'a', self.spot_requests
         if spot_bid:
             for alias in aliases:
                 kwargs['user_data'] = alias
                 resvs.extend(self.ec2.request_instances(image_id, **kwargs))
         else:
             resvs.append(self.ec2.request_instances(image_id, **kwargs))
+        print 'a', self.spot_requests
         for resv in resvs:
             log.info(str(resv), extra=dict(__raw__=True))
+            print (str(resv), dict(__raw__=True))
+        print 'a', self.spot_requests
         return resvs
 
     def _get_next_node_num(self):
@@ -791,6 +798,7 @@ class Cluster(object):
         aliases - list of aliases to assign to new nodes (len must equal
         num_nodes)
         """
+        print __name__
         running_pending = self._nodes_in_states(['pending', 'running'])
         aliases = aliases or []
         if not aliases:
@@ -1162,7 +1170,9 @@ class Cluster(object):
         Wait for all open spot requests for this cluster to transition to
         'active'.
         """
+       
         spots = spots or self.spot_requests
+        print 'wfas', spots
         open_spots = [spot for spot in spots if spot.state == "open"]
         if open_spots:
             pbar = self.progress_bar.reset()
