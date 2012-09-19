@@ -462,7 +462,8 @@ class SGELoadBalancer(LoadBalancer):
         and returns a datetime object with the master's time
         instead of fetching it from local machine, maybe inaccurate.
         """
-        str = '\n'.join(self._cluster.master_node.ssh.execute('date'))
+        cluster = self._cm.get_cluster(self._tag)
+        str = '\n'.join(cluster.master_node.ssh.execute('date'))
         return datetime.datetime.strptime(str, "%a %b %d %H:%M:%S UTC %Y")
 
     def get_qatime(self, now):
@@ -483,7 +484,8 @@ class SGELoadBalancer(LoadBalancer):
         return str
 
     def _get_stats(self):
-        master = self._cluster.master_node
+        cluster = self._cm.get_cluster(self._tag)
+        master = cluster.master_node
         now = self.get_remote_time()
         qatime = self.get_qatime(now)
         qacct_cmd = 'qacct -j -b ' + qatime
@@ -530,14 +532,16 @@ class SGELoadBalancer(LoadBalancer):
             "Failed to retrieve SGE stats after trying %d times, exiting..." %
             retries)
 
-    def run(self, cluster):
+    def run(self, cm, tag):
         """
         This function will loop indefinitely, using SGELoadBalancer.get_stats()
         to get the clusters status. It looks at the job queue and tries to
         decide whether to add or remove a node.  It should later look at job
         durations (currently doesn't)
         """
-        self._cluster = cluster
+        self._cm = cm
+        self._tag = tag
+        cluster =  self._cm.get_cluster(self._tag)
         if self.max_nodes is None:
             self.max_nodes = cluster.cluster_size
         use_default_stats_file = self.dump_stats and not self.stats_file
@@ -633,6 +637,8 @@ class SGELoadBalancer(LoadBalancer):
         TODO: See if the recent jobs have taken more than 5 minutes (how
         long it takes to start an instance)
         """
+        self._cm.add_nodes(self._tag, 1, [])
+        return
         if len(self.stat.hosts) >= self.max_nodes:
             log.info("Not adding nodes: already at or above maximum (%d)" %
                      self.max_nodes)

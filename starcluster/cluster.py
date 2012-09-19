@@ -808,11 +808,13 @@ class Cluster(object):
                     raise exception.ClusterValidationError(
                         "node with alias %s already exists" % node.alias)
             log.info("Launching node(s): %s" % ', '.join(aliases))
-            self.create_nodes(aliases, image_id=image_id,
+            resvs = self.create_nodes(aliases, image_id=image_id,
                               instance_type=instance_type, zone=zone,
                               placement_group=placement_group,
                               spot_bid=spot_bid)
-        self.wait_for_cluster(msg="Waiting for node(s) to come up...")
+        else:
+            resvs = None
+        self.wait_for_cluster(spots=resvs, msg="Waiting for node(s) to come up...")
         log.debug("Adding node(s): %s" % aliases)
         default_plugin = clustersetup.DefaultClusterSetup(
             disable_threads=self.disable_threads, num_threads=self.num_threads)
@@ -1162,7 +1164,11 @@ class Cluster(object):
         Wait for all open spot requests for this cluster to transition to
         'active'.
         """
-        spots = spots or self.spot_requests
+        if spots:
+            spots = spots + self.spot_requests
+        else: 
+            spots = self.spot_requests
+
         open_spots = [spot for spot in spots if spot.state == "open"]
         if open_spots:
             pbar = self.progress_bar.reset()
@@ -1217,7 +1223,7 @@ class Cluster(object):
         self.pool.map(lambda n: n.wait(interval=self.refresh_interval), nodes)
 
     @print_timing("Waiting for cluster to come up")
-    def wait_for_cluster(self, msg="Waiting for cluster to come up..."):
+    def wait_for_cluster(self, spots=None, msg="Waiting for cluster to come up..."):
         """
         Wait for cluster to come up and display progress bar. Waits for all
         spot requests to become 'active', all instances to be in a 'running'
@@ -1228,7 +1234,7 @@ class Cluster(object):
         interval = self.refresh_interval
         log.info("%s %s" % (msg, "(updating every %ds)" % interval))
         try:
-            self.wait_for_active_spots()
+            self.wait_for_active_spots(spots=spots)
             self.wait_for_active_instances()
             self.wait_for_running_instances()
             self.wait_for_ssh()
