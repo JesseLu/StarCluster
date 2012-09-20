@@ -79,12 +79,20 @@ class CmdLoadBalance(ClusterCompleter):
                           action="store_true", default=False,
                           help="Terminate the cluster when the queue is empty")
 
+
     def execute(self, args):
         if not self.cfg.globals.enable_experimental:
             raise exception.ExperimentalFeature("The 'loadbalance' command")
         if len(args) != 1:
             self.parser.error("please specify a <cluster_tag>")
         cluster_tag = args[0]
-        cluster = self.cm.get_cluster(cluster_tag)
         lb = sge.SGELoadBalancer(**self.specified_options_dict)
-        lb.run(self.cm, cluster_tag)
+
+        class GetCluster:
+            def __init__(self, cm):
+                self.cm = cm
+            @property
+            def cluster(self):
+                return self.cm.get_cluster(cluster_tag)
+
+        lb.run(GetCluster(self.cm).cluster)

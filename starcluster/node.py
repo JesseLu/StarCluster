@@ -587,6 +587,8 @@ class Node(object):
                 if export_line not in contents:
                     etc_exports.write(export_line)
         etc_exports.close()
+
+        self.ssh.execute('/etc/init.d/nfs-kernel-server restart')
         self.ssh.execute('exportfs -fra')
 
     def stop_exporting_fs_to_nodes(self, nodes):
@@ -644,7 +646,13 @@ class Node(object):
         for path in remote_paths:
             if not self.ssh.path_exists(path):
                 self.ssh.makedirs(path)
-            self.ssh.execute('mount %s' % path)
+            for k in range(6): 
+                if self.ssh.execute('mount %s' % path):
+                    self.ssh.execute('this is not a valid command')
+                    print "HI!!"
+                    time.sleep(10)
+                else:
+                    break # Mounted successfully.
 
     def get_mount_map(self):
         mount_map = {}
