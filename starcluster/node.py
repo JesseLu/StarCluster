@@ -588,7 +588,7 @@ class Node(object):
                     etc_exports.write(export_line)
         etc_exports.close()
 
-        self.ssh.execute('/etc/init.d/nfs-kernel-server restart')
+        # self.ssh.execute('/etc/init.d/nfs-kernel-server restart')
         self.ssh.execute('exportfs -fra')
 
     def stop_exporting_fs_to_nodes(self, nodes):

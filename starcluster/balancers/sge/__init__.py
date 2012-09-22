@@ -14,6 +14,8 @@ SGE_STATS_DIR = os.path.join(static.STARCLUSTER_CFG_DIR, 'sge')
 DEFAULT_STATS_DIR = os.path.join(SGE_STATS_DIR, '%s')
 DEFAULT_STATS_FILE = os.path.join(DEFAULT_STATS_DIR, 'sge-stats.csv')
 
+SLOTS_PER_HOST = 2
+
 
 class SGEStats(object):
     """
@@ -595,10 +597,12 @@ class SGELoadBalancer(LoadBalancer):
             log.info("Last cluster modification time: %s" %
                      self.__last_cluster_mod_time.strftime("%Y-%m-%d %X"),
                      extra=dict(__raw__=True))
+            print self.stat.get_all_stats()
+            self._maxwell_add_remove_nodes()
             #evaluate if nodes need to be added
-            self._eval_add_node()
+            # self._eval_add_node()
             #evaluate if nodes need to be removed
-            self._eval_remove_node()
+            # self._eval_remove_node()
             if self.dump_stats or self.plot_stats:
                 self.stat.write_stats_to_csv(self.stats_file)
             #call the visualizer
@@ -626,6 +630,51 @@ class SGELoadBalancer(LoadBalancer):
             log.info("Waiting for cluster to stabilize...")
         return is_stabilized
 
+    def _maxwell_add_remove_nodes(self):
+        """ Add/remove nodes to make the Maxwell cluster elastic.
+
+            The algorithm is as follows:
+            *   If there is a job which requests more slots than available,
+                ADD nodes so that the total number of slots requested are available.
+            *   If not, then sum the total number of slots requested by all 
+                jobs which have been existed for over a minute. 
+                If the total number of slots is less than half this number, then
+                ADD sufficient nodes so that the number of available slots will be
+                equal to or greater than this number.
+            *   Lastly, if no jobs are added, then we may remove nodes.
+                Specifically, we find the idle nodes which is atleast 45 minutes
+                past their AWS reservation hour and REMOVE the node which is most
+                past its reservation hour.
+
+            Note the following:
+            *   We allow for the addition of multiple nodes, but we only remove
+                nodes one at a time.
+        """
+        now = datetime.datetime.now()
+        
+
+        # Obtain information about the cluster.
+        # Specifically, the number of slots present.
+        num_slots = len(self.stat.hosts) * SLOTS_PER_HOST
+
+        # Obtain information of jobs in the queue.
+        # Specfically, the maximum and total number of slots requested, 
+        # and the elapsed time in queue.
+        # print self.stat.get_queued_jobs()
+        jobs = self.stat.get_queued_jobs()
+        for job in jobs:
+            job['time_in_queue'] = now - \
+                            utils.iso_to_datetime_tuple(job['JB_submission_time'])
+            if job['time_in_queue'] < datetime.timedelta(minutes=1):
+                jobs.remove(job) # Job has not existed for more than a minute.
+
+
+        max_slots_requested = max([int(job['slots']) for job in jobs])
+        total_slots_requested = sum([int(job['slots']) for job in jobs])
+        print max_slots_requested, total_slots_requested
+
+
+            
     def _eval_add_node(self):
         """
         This function uses the metrics available to it to decide whether to
