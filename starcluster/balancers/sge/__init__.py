@@ -597,7 +597,6 @@ class SGELoadBalancer(LoadBalancer):
             log.info("Last cluster modification time: %s" %
                      self.__last_cluster_mod_time.strftime("%Y-%m-%d %X"),
                      extra=dict(__raw__=True))
-            print self.stat.get_all_stats()
             self._maxwell_add_remove_nodes()
             #evaluate if nodes need to be added
             # self._eval_add_node()
@@ -641,6 +640,8 @@ class SGELoadBalancer(LoadBalancer):
                 If the total number of slots is less than half this number, then
                 ADD sufficient nodes so that the number of available slots will be
                 equal to or greater than this number.
+            *   If longest queued job waiting time is greater than X minutes, add
+                Y nodes.
             *   Lastly, if no jobs are added, then we may remove nodes.
                 Specifically, we find the idle nodes which is atleast 45 minutes
                 past their AWS reservation hour and REMOVE the node which is most
@@ -651,16 +652,17 @@ class SGELoadBalancer(LoadBalancer):
                 nodes one at a time.
         """
         now = datetime.datetime.now()
+        raw = dict(__raw__=True)
+        log.info('Custom Maxwell balancer')
         
-
         # Obtain information about the cluster.
         # Specifically, the number of slots present.
         num_slots = len(self.stat.hosts) * SLOTS_PER_HOST
+        log.info('Number of slots in cluster: %d' % num_slots, extra=raw)
 
         # Obtain information of jobs in the queue.
         # Specfically, the maximum and total number of slots requested, 
         # and the elapsed time in queue.
-        # print self.stat.get_queued_jobs()
         jobs = self.stat.get_queued_jobs()
         for job in jobs:
             job['time_in_queue'] = now - \
@@ -671,9 +673,35 @@ class SGELoadBalancer(LoadBalancer):
 
         max_slots_requested = max([int(job['slots']) for job in jobs])
         total_slots_requested = sum([int(job['slots']) for job in jobs])
-        print max_slots_requested, total_slots_requested
+        max_waiting_time = max([job['time_in_queue'] for job in jobs])
+        log.info('Maximum number of slots requested: %d' % max_slots_requested, \
+            extra=raw)
+        log.info('Total number of slots requested: %d' % total_slots_requested, \
+            extra=raw)
+        log.info('Longest job waiting time: %s' % max_waiting_time, extra=raw)
 
+        # Condition A: Add nodes to fit largest job.
+        if max_slots_requested > num_slots:
+            nodes_to_add = (max_slots_requested - num_slots) / SLOTS_PER_HOST
+            log.info('Condition A met: Adding %d nodes to cluster' % nodes_to_add)
+            self._cluster.add_nodes(nodes_to_add, [])
 
+        # Condition B: Add nodes to fit the total number of nodes requested.
+        # TODO: add a max amount here.
+        elif total_slots_requested > num_slots:
+            nodes_to_add = (total_slots_requested - num_slots) / SLOTS_PER_HOST
+            log.info('Condition B met: Adding %d nodes to cluster' % nodes_to_add)
+            self._cluster.add_nodes(nodes_to_add, [])
+
+        # Condition C: Incrementally add nodes if we have long-waiting jobs.
+        elif max_waiting_time > datetime.timedelta(minutes=10):
+            nodes_to_add = 1
+            log.info('Condition C met: Adding %d nodes to cluster' % nodes_to_add)
+            self._cluster.add_nodes(nodes_to_add, [])
+
+        # Condition D: Attempt to remove one idle node.
+        else:
+            pass
             
     def _eval_add_node(self):
         """
