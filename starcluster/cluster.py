@@ -1165,7 +1165,11 @@ class Cluster(object):
         'active'.
         """
         if spots:
-            spots = spots + self.spot_requests
+            spots = list(set(spots + self.spot_requests))
+#             for spot in spots: # Remove possible duplicates.
+#                 print sum([str(s) == str(spot) for s in spots])
+#                 if sum([str(s) == str(spot) for s in spots]) > 1:
+#                     spots.remove(spot)
         else: 
             spots = self.spot_requests
 

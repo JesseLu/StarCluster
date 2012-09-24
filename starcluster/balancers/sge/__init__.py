@@ -56,6 +56,8 @@ class SGEStats(object):
                     if hvalue.nodeType == xml.dom.minidom.Node.TEXT_NODE:
                         val = hvalue.data
                     hash[attr] = val
+            if hash['swap_used'] == '-':
+                continue # Don't count this as an execution host.
             if hash['name'] != u'global':
                 self.hosts.append(hash)
         return self.hosts
@@ -86,6 +88,26 @@ class SGEStats(object):
             else:
                 self.jobs.append(hash)
         return self.jobs
+
+    def parse_qstat2(self, qstat_out, fields=None, queues=None):
+        """
+        This method parses qstat -xml output and makes a neat array
+        """
+        self.busy_nodes = []  # clear the old jobs
+        fields = fields or self._default_fields
+        doc = xml.dom.minidom.parseString(qstat_out)
+        for qlist in doc.getElementsByTagName("Queue-List"):
+            qlist_string = xml.dom.minidom.parseString(qlist.toxml())
+            name = [t.firstChild.nodeValue for t in qlist.childNodes \
+                    if (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "name")][0]
+            if 'maxwell.q' in name:
+                node_name = name.replace('maxwell.q@', '')
+                if len([t for t in qlist.childNodes if \
+                    (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "job_list")]):
+                    self.busy_nodes.append(node_name)
+                
+
+            # node_name = name.replace('maxwell.q@', '')
 
     def job_multiply(self, hash):
         """
@@ -236,8 +258,8 @@ class SGEStats(object):
         """
         nodename = node.alias
         for j in self.jobs:
-            qn = j.get('queue_name', '')
-            if nodename in qn:
+            # qn = j.get('queue_name', '')
+            if nodename in self.busy_nodes:
                 log.debug("Node %s is working" % node.alias)
                 return True
         log.debug("Node %s is IDLE" % node.id)
@@ -322,8 +344,12 @@ class SGEStats(object):
         bits.append(self.avg_wait_time())
         #last field is array of loads for hosts
         arr = self.get_loads()
-        load_sum = float(reduce(self._add, arr))
-        avg_load = load_sum / len(arr)
+        try:
+            load_sum = float(reduce(self._add, arr))
+            avg_load = load_sum / len(arr)
+        except:
+            avg_load = 0
+
         bits.append(avg_load)
         return bits
 
@@ -389,7 +415,7 @@ class SGELoadBalancer(LoadBalancer):
     """
 
     def __init__(self, interval=60, max_nodes=None, wait_time=900,
-                 add_pi=1, kill_after=45, stab=180, lookback_win=3,
+                 add_pi=1, max_increment=2, kill_after=45, stab=180, lookback_win=3,
                  min_nodes=1, kill_cluster=False, plot_stats=False,
                  plot_output_dir=None, dump_stats=False, stats_file=None):
         self._cluster = None
@@ -402,6 +428,7 @@ class SGELoadBalancer(LoadBalancer):
         self.max_nodes = max_nodes
         self.longest_allowed_queue_time = max(300, wait_time)
         self.add_nodes_per_iteration = add_pi
+        self.maximum_add_nodes_per_iteration = max_increment
         self.stabilization_time = stab
         self.lookback_window = lookback_win
         self.kill_cluster = kill_cluster
@@ -490,6 +517,7 @@ class SGELoadBalancer(LoadBalancer):
         qatime = self.get_qatime(now)
         qacct_cmd = 'qacct -j -b ' + qatime
         qstat_cmd = 'qstat -u \* -xml'
+        qstat2_cmd = 'qstat -f -xml'
         qhostxml = '\n'.join(master.ssh.execute('qhost -xml',
                                                 log_output=True,
                                                 source_profile=True,
@@ -497,12 +525,16 @@ class SGELoadBalancer(LoadBalancer):
         qstatxml = '\n'.join(master.ssh.execute(qstat_cmd, log_output=True,
                                                 source_profile=True,
                                                 raise_on_failure=True))
+        qstat2xml = '\n'.join(master.ssh.execute(qstat2_cmd, log_output=True,
+                                                source_profile=True,
+                                                raise_on_failure=True))
         qacct = '\n'.join(master.ssh.execute(qacct_cmd, log_output=True,
                                              ignore_exit_status=True,
                                              source_profile=True))
         stats = SGEStats()
         stats.parse_qhost(qhostxml)
-        stats.parse_qstat(qstatxml, queues=["all.q", ""])
+        stats.parse_qstat(qstatxml, queues=["maxwell.q", ""])
+        stats.parse_qstat2(qstat2xml, queues=["maxwell.q", ""])
         stats.parse_qacct(qacct, now)
         log.debug("sizes: qhost: %d, qstat: %d, qacct: %d" %
                   (len(qhostxml), len(qstatxml), len(qacct)))
@@ -571,8 +603,10 @@ class SGELoadBalancer(LoadBalancer):
                  extra=raw)
         log.info("Minimum cluster size: %d" % self.min_nodes,
                  extra=raw)
-        log.info("Cluster growth rate: %d nodes/iteration\n" %
+        log.info("Cluster incremental growth rate: %d nodes/iteration" %
                  self.add_nodes_per_iteration, extra=raw)
+        log.info("Cluster maximum growth rate: %d nodes/iteration\n" %
+                 self.maximum_add_nodes_per_iteration, extra=raw)
         if self.dump_stats:
             log.info("Writing stats to file: %s" % self.stats_file)
         if self.plot_stats:
@@ -657,7 +691,8 @@ class SGELoadBalancer(LoadBalancer):
         
         # Obtain information about the cluster.
         # Specifically, the number of slots present.
-        num_slots = len(self.stat.hosts) * SLOTS_PER_HOST
+        num_nodes = len(self.stat.hosts)
+        num_slots = num_nodes * SLOTS_PER_HOST
         log.info('Number of slots in cluster: %d' % num_slots, extra=raw)
 
         # Obtain information of jobs in the queue.
@@ -667,41 +702,74 @@ class SGELoadBalancer(LoadBalancer):
         for job in jobs:
             job['time_in_queue'] = now - \
                             utils.iso_to_datetime_tuple(job['JB_submission_time'])
-            if job['time_in_queue'] < datetime.timedelta(minutes=1):
-                jobs.remove(job) # Job has not existed for more than a minute.
 
+        if jobs:
+            max_slots_requested = max([int(job['slots']) for job in jobs])
+            total_slots_requested = sum([int(job['slots']) for job in jobs \
+                            if job['time_in_queue'] > datetime.timedelta(minutes=1)])
+            max_waiting_time = max([job['time_in_queue'] for job in jobs])
+        else: 
+            max_slots_requested = 0
+            total_slots_requested = 0
+            max_waiting_time = datetime.timedelta(minutes=0)
 
-        max_slots_requested = max([int(job['slots']) for job in jobs])
-        total_slots_requested = sum([int(job['slots']) for job in jobs])
-        max_waiting_time = max([job['time_in_queue'] for job in jobs])
         log.info('Maximum number of slots requested: %d' % max_slots_requested, \
             extra=raw)
         log.info('Total number of slots requested: %d' % total_slots_requested, \
             extra=raw)
         log.info('Longest job waiting time: %s' % max_waiting_time, extra=raw)
 
-        # Condition A: Add nodes to fit largest job.
-        if max_slots_requested > num_slots:
-            nodes_to_add = (max_slots_requested - num_slots) / SLOTS_PER_HOST
-            log.info('Condition A met: Adding %d nodes to cluster' % nodes_to_add)
-            self._cluster.add_nodes(nodes_to_add, [])
+        if num_nodes < self.max_nodes:
+            # Condition A: Add nodes to fit largest job.
+            if max_slots_requested > num_slots:
+                nodes_to_add = min( self.max_nodes - num_nodes, \
+                                    (max_slots_requested - num_slots) / \
+                                        SLOTS_PER_HOST)
+                log.info('Condition A met: Adding %d nodes to cluster' % \
+                    nodes_to_add)
+                self._cluster.add_nodes(nodes_to_add, [])
+                return
 
-        # Condition B: Add nodes to fit the total number of nodes requested.
-        # TODO: add a max amount here.
-        elif total_slots_requested > num_slots:
-            nodes_to_add = (total_slots_requested - num_slots) / SLOTS_PER_HOST
-            log.info('Condition B met: Adding %d nodes to cluster' % nodes_to_add)
-            self._cluster.add_nodes(nodes_to_add, [])
+            # Condition B: Add nodes to fit the total number of nodes requested.
+            elif total_slots_requested > num_slots:
+                nodes_to_add = min( self.max_nodes - num_nodes, \
+                                    self.maximum_add_nodes_per_iteration, \
+                                    (total_slots_requested - num_slots) / \
+                                        SLOTS_PER_HOST)
+                log.info('Condition B met: Adding %d nodes to cluster' % \
+                    nodes_to_add)
+                self._cluster.add_nodes(nodes_to_add, [])
+                return
 
-        # Condition C: Incrementally add nodes if we have long-waiting jobs.
-        elif max_waiting_time > datetime.timedelta(minutes=10):
-            nodes_to_add = 1
-            log.info('Condition C met: Adding %d nodes to cluster' % nodes_to_add)
-            self._cluster.add_nodes(nodes_to_add, [])
+            # Condition C: Incrementally add nodes if we have long-waiting jobs.
+            elif max_waiting_time > datetime.timedelta(minutes=10):
+                nodes_to_add = min( self.max_nodes-num_nodes, \
+                                    self.add_nodes_per_iteration)
+                log.info('Condition C met: Adding %d nodes to cluster' % \
+                    nodes_to_add)
+                self._cluster.add_nodes(nodes_to_add, [])
+                return
 
         # Condition D: Attempt to remove one idle node.
-        else:
-            pass
+        if (num_slots > max(max_slots_requested, total_slots_requested)) and \
+            (not jobs):
+            log.info("Condition D: Looking a node to remove.")
+            remove_nodes = self._find_nodes_for_removal(max_remove=1)
+            if not remove_nodes:
+                log.info("No nodes eligible for removal.")
+            for node in remove_nodes:
+                if node.update() != "running":
+                    log.error("Node %s is already dead - not removing" %
+                              node.alias)
+                    continue
+                log.warn("Removing %s: %s (%s)" %
+                         (node.alias, node.id, node.dns_name))
+                try:
+                    self._cluster.remove_node(node)
+                except Exception:
+                    log.error("Failed to remove node %s" % node.alias,
+                              exc_info=True)
+
             
     def _eval_add_node(self):
         """

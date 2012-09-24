@@ -62,13 +62,16 @@ class CmdLoadBalance(ClusterCompleter):
         parser.add_option("-a", "--add_nodes_per_iter", dest="add_pi",
                           action="store", type="int", default=None,
                           help="Number of nodes to add per iteration")
+        parser.add_option("-A", "--max_add_nodes_per_iter", dest="max_increment",
+                          action="store", type="int", default=None,
+                          help="Maximum number of nodes that can be added at once")
         parser.add_option("-k", "--kill_after", dest="kill_after",
                           action="store", type="int", default=None,
                           help="Minutes after which a node can be killed")
-        parser.add_option("-s", "--stabilization_time", dest="stab",
-                          action="store", type="int", default=None,
-                          help="Seconds to wait before cluster "
-                          "stabilizes (min: 300s)")
+#         parser.add_option("-s", "--stabilization_time", dest="stab",
+#                           action="store", type="int", default=None,
+#                           help="Seconds to wait before cluster "
+#                           "stabilizes (min: 300s)")
         parser.add_option("-l", "--lookback_window", dest="lookback_win",
                           action="store", type="int", default=None,
                           help="Minutes to look back for past job history")

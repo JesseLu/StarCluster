@@ -29,7 +29,7 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         self._setup_sge_profile(node)
         self._inst_sge(node, exec_host=True)
 
-    def _create_sge_pe(self, name="orte", nodes=None, queue="all.q"):
+    def _create_sge_pe(self, name="orte", nodes=None, queue="maxwell.q"):
         """
         Create or update an SGE parallel environment
 
@@ -121,6 +121,8 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
         self.pool.wait(numtasks=len(self.nodes))
         self._create_sge_pe(queue='maxwell.q')
             
+        master.ssh.execute('qconf -dattr queue pe_list orte all.q', \
+            source_profile=True)
         # Modify the scheduling interval to be 1 second.
         master.ssh.execute("""qconf -ssconf | sed 's/schedule_interval.*/schedule_interval 1/' | sed 's/weight_tickets_functional.*/weight_tickets_functional 1/' > /tmp/ssconf && qconf -Msconf /tmp/ssconf""", source_profile=True)
         # Modify the load_reporting_time in the configuration to be 0.
