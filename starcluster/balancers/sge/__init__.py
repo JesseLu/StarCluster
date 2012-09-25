@@ -755,6 +755,7 @@ class SGELoadBalancer(LoadBalancer):
                                                             raise_on_failure=True)
 
         # Recover cluster by adding enough nodes to accomodate all downed jobs.
+        log.info('Recovering lost nodes...')
         if self.stat.down_slots > 0:
             nodes_to_add = min(self.max_nodes - len(self.stat.hosts), \
                     int(math.ceil(float(self.stat.down_slots) / SLOTS_PER_HOST)))
