@@ -377,6 +377,8 @@ class Cluster(object):
         self.disable_threads = disable_threads
         self.force_spot_master = force_spot_master
 
+        self.current_highest_node_num = 0
+
         self._cluster_group = None
         self._placement_group = None
         self._zone = None
@@ -758,7 +760,7 @@ class Cluster(object):
     def _get_next_node_num(self):
         nodes = self._nodes_in_states(['pending', 'running'])
         nodes = filter(lambda x: not x.is_master(), nodes)
-        highest = 0
+        highest = self.current_highest_node_num
         for n in nodes:
             try:
                 highest = max(highest, int(n.alias[4:8]))
@@ -795,6 +797,7 @@ class Cluster(object):
         aliases = aliases or []
         if not aliases:
             next_node_id = self._get_next_node_num()
+            self.current_highest_node_num = next_node_id + num_nodes
             for i in range(next_node_id, next_node_id + num_nodes):
                 alias = 'node%.3d' % i
                 aliases.append(alias)
