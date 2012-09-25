@@ -826,6 +826,7 @@ class Cluster(object):
             resvs = None
         self.wait_for_cluster(spots=resvs, msg="Waiting for node(s) to come up...")
         log.debug("Adding node(s): %s" % aliases)
+        print self.disable_threads, self.num_threads
         default_plugin = clustersetup.DefaultClusterSetup(
             disable_threads=self.disable_threads, num_threads=self.num_threads)
         if not self.disable_queue:

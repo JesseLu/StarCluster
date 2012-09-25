@@ -102,6 +102,7 @@ class SGEStats(object):
         self.busy_nodes = [] # Aliases of nodes which are busy.  
         self.down_nodes = [] # Aliases of nodes which are down.
         self.down_jobs = [] # job_id's of jobs which are down.
+        self.down_slots = 0 # Total number of busy slots downed.
 
         doc = xml.dom.minidom.parseString(qstat_out) # Parse xml.
 
@@ -117,15 +118,23 @@ class SGEStats(object):
 
             node_name = name.replace('maxwell.q@', '') # Get the raw node alias.
 
-            # Find the job id numbers that are running on this node.
+            # Find the job id numbers and slot info that are running on this node.
             jobs = [t for t in qlist.childNodes if \
                 (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "job_list")]
             job_ids = []
+            busy_slots = 0
             for job in jobs:
+                # Id numbers of jobs.
                 ids = [t.firstChild.nodeValue for t in job.childNodes if \
                             (t.nodeType == t.ELEMENT_NODE) and \
                             (t.nodeName == "JB_job_number")]
                 job_ids += [int(i) for i in ids]
+
+                # Slots of each job
+                busy_slots += int([t.firstChild.nodeValue \
+                            for t in job.childNodes if \
+                            (t.nodeType == t.ELEMENT_NODE) and \
+                            (t.nodeName == "slots")][0])
 
             # Determine if the node is busy.
             # If there is at least one <job_list> tag, then we consider it busy.
@@ -139,6 +148,7 @@ class SGEStats(object):
                 (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "state")]:
                 self.down_nodes.append(node_name)
                 self.down_jobs += job_ids # Jobs on node also down then.
+                self.down_slots += busy_slots
     
         # Make sure down_jobs list is unique.
         self.down_jobs = list(set(self.down_jobs))
@@ -699,6 +709,9 @@ class SGELoadBalancer(LoadBalancer):
             If node is down, try to remove it.
             If the node that is down has jobs on it, then resubmit the jobs
             and delete the downed ones.
+            Also, will add the number of nodes needed to accomodate the downed
+            jobs. This also give SGE a pause period, to properly resubmit the
+            downed jobs.
         """
         raw = dict(__raw__=True)
         master = self._cluster.master_node
@@ -721,22 +734,31 @@ class SGELoadBalancer(LoadBalancer):
             ", ".join(str(n) for n in self.stat.down_jobs)), \
             extra=raw)
         
+        log.info('Number of busy slots downed: %d' % self.stat.down_slots, extra=raw)
+        
         # Attempt to remove downed nodes.
         for alias in self.stat.down_nodes:
             try:    
                 self._cluster.remove_node(self._cluster.get_node_by_alias(alias), \
                                             terminate=True)
             except: 
-                log.info('Could not remove downed node %s.' % alias, extra=raw)
+                log.debug('Could not remove downed node %s.' % alias, extra=raw)
 
-        # Resubmit downed jobs (delete previous jobs).
+        # Resubmit downed jobs with maximum priority (delete previous jobs).
         if self.stat.down_jobs:
             down_jobs = " ".join(str(s) for s in self.stat.down_jobs)
-            log.info('Resubmitting jobs %s...' % down_jobs, extra=raw)
-            master.ssh.execute('qresub %s && qdel %s' % (down_jobs, down_jobs), \
+            log.info('Resubmitting jobs: %s' % down_jobs, extra=raw)
+            master.ssh.execute('qalter -p 1024 %s && qresub %s && qdel -f %s' % \
+                                (down_jobs, down_jobs, down_jobs), \
                                                             log_output=True, \
                                                             source_profile=True, \
                                                             raise_on_failure=True)
+
+        # Recover cluster by adding enough nodes to accomodate all downed jobs.
+        if self.stat.down_slots > 0:
+            nodes_to_add = min(self.max_nodes - len(self.stat.hosts), \
+                    int(math.ceil(float(self.stat.down_slots) / SLOTS_PER_HOST)))
+            self._cluster.add_nodes(nodes_to_add, [])
 
     def has_cluster_stabilized(self):
         now = datetime.datetime.utcnow()
