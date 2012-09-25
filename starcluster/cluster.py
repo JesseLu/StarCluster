@@ -764,7 +764,10 @@ class Cluster(object):
         hosts_file = self._master.ssh.remote_file('/etc/hosts', 'r')
         hosts = hosts_file.read()
         hosts_file.close()
-        highest = max(int(m[1]) for m in re.findall(r'(node)(\d+)', hosts))
+        try:
+            highest = max(int(m[1]) for m in re.findall(r'(node)(\d+)', hosts))
+        except:
+            highest = 0
         # print hosts, highest # For debugging.
         for n in nodes:
             try:

@@ -2,6 +2,7 @@ import os
 import time
 import datetime
 import xml.dom.minidom
+import math
 
 from starcluster import utils
 from starcluster import static
@@ -90,24 +91,59 @@ class SGEStats(object):
         return self.jobs
 
     def parse_qstat2(self, qstat_out, fields=None, queues=None):
+        """ Parse the output of qstat -f -xml
+
+            Find the following information:
+            *   Which nodes are busy,
+            *   Which nodes are down (alarm, unreachable), and
+            *   Which jobs are running on which nodes.
+        
         """
-        This method parses qstat -xml output and makes a neat array
-        """
-        self.busy_nodes = []  # clear the old jobs
-        fields = fields or self._default_fields
-        doc = xml.dom.minidom.parseString(qstat_out)
+        self.busy_nodes = [] # Aliases of nodes which are busy.  
+        self.down_nodes = [] # Aliases of nodes which are down.
+        self.down_jobs = [] # job_id's of jobs which are down.
+
+        doc = xml.dom.minidom.parseString(qstat_out) # Parse xml.
+
+        # All information is grouped into <Queue-List></Queue-List>.
         for qlist in doc.getElementsByTagName("Queue-List"):
-            qlist_string = xml.dom.minidom.parseString(qlist.toxml())
+
+            # The name of the node.
             name = [t.firstChild.nodeValue for t in qlist.childNodes \
                     if (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "name")][0]
-            if 'maxwell.q' in name:
-                node_name = name.replace('maxwell.q@', '')
-                if len([t for t in qlist.childNodes if \
-                    (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "job_list")]):
-                    self.busy_nodes.append(node_name)
+
+            if 'maxwell.q' not in name:
+                continue # We only care about maxwell.q@node*** nodes.
+
+            node_name = name.replace('maxwell.q@', '') # Get the raw node alias.
+
+            # Find the job id numbers that are running on this node.
+            jobs = [t for t in qlist.childNodes if \
+                (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "job_list")]
+            job_ids = []
+            for job in jobs:
+                ids = [t.firstChild.nodeValue for t in job.childNodes if \
+                            (t.nodeType == t.ELEMENT_NODE) and \
+                            (t.nodeName == "JB_job_number")]
+                job_ids += [int(i) for i in ids]
+
+            # Determine if the node is busy.
+            # If there is at least one <job_list> tag, then we consider it busy.
+            if [t for t in qlist.childNodes if \
+                (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "job_list")]:
+                self.busy_nodes.append(node_name)
+                
+            # Determine if the node is down.
+            # If there exists a <state> tag, then we consider it down.
+            if [t for t in qlist.childNodes if \
+                (t.nodeType == t.ELEMENT_NODE) and (t.nodeName == "state")]:
+                self.down_nodes.append(node_name)
+                self.down_jobs += job_ids # Jobs on node also down then.
+    
+        # Make sure down_jobs list is unique.
+        self.down_jobs = list(set(self.down_jobs))
                 
 
-            # node_name = name.replace('maxwell.q@', '')
 
     def job_multiply(self, hash):
         """
@@ -501,6 +537,7 @@ class SGELoadBalancer(LoadBalancer):
         limit the dataset qacct returns.
         """
         if self.stat.is_jobstats_empty():
+            log.info("Current time (UTC): %s" % now)
             log.info("Loading full job history")
             temp_lookback_window = self.lookback_window * 60 * 60
         else:
@@ -631,13 +668,16 @@ class SGELoadBalancer(LoadBalancer):
             log.info("Last cluster modification time: %s" %
                      self.__last_cluster_mod_time.strftime("%Y-%m-%d %X"),
                      extra=dict(__raw__=True))
+
+            # Check for downed nodes and similar sudden problems.
+            self._maxwell_check_cluster()
+
+            # Grow/shrink the cluster.
             self._maxwell_add_remove_nodes()
-            #evaluate if nodes need to be added
-            # self._eval_add_node()
-            #evaluate if nodes need to be removed
-            # self._eval_remove_node()
+
             if self.dump_stats or self.plot_stats:
                 self.stat.write_stats_to_csv(self.stats_file)
+
             #call the visualizer
             if self.plot_stats:
                 try:
@@ -652,6 +692,51 @@ class SGELoadBalancer(LoadBalancer):
             log.info("Sleeping...(looping again in %d secs)\n" %
                      self.polling_interval)
             time.sleep(self.polling_interval)
+
+    def _maxwell_check_cluster(self):
+        """ Looks for downed nodes and jobs and tries to correct them.
+
+            If node is down, try to remove it.
+            If the node that is down has jobs on it, then resubmit the jobs
+            and delete the downed ones.
+        """
+        raw = dict(__raw__=True)
+        master = self._cluster.master_node
+
+        # Obtain busy/down information about nodes/jobs.
+        log.info("Maxwell cluster check...")
+
+        log.info('%d nodes busy: %s' % \
+            (len(self.stat.busy_nodes), \
+            ", ".join(str(n) for n in self.stat.busy_nodes)), \
+            extra=raw)
+
+        log.info('%d nodes down: %s' % \
+            (len(self.stat.down_nodes), \
+            ", ".join(str(n) for n in self.stat.down_nodes)), \
+            extra=raw)
+
+        log.info('%d jobs down: %s' % \
+            (len(self.stat.down_jobs), \
+            ", ".join(str(n) for n in self.stat.down_jobs)), \
+            extra=raw)
+        
+        # Attempt to remove downed nodes.
+        for alias in self.stat.down_nodes:
+            try:    
+                self._cluster.remove_node(self._cluster.get_node_by_alias(alias), \
+                                            terminate=True)
+            except: 
+                log.info('Could not remove downed node %s.' % alias, extra=raw)
+
+        # Resubmit downed jobs (delete previous jobs).
+        if self.stat.down_jobs:
+            down_jobs = " ".join(str(s) for s in self.stat.down_jobs)
+            log.info('Resubmitting jobs %s...' % down_jobs, extra=raw)
+            master.ssh.execute('qresub %s && qdel %s' % (down_jobs, down_jobs), \
+                                                            log_output=True, \
+                                                            source_profile=True, \
+                                                            raise_on_failure=True)
 
     def has_cluster_stabilized(self):
         now = datetime.datetime.utcnow()
@@ -723,8 +808,9 @@ class SGELoadBalancer(LoadBalancer):
             # Condition A: Add nodes to fit largest job.
             if max_slots_requested > num_slots:
                 nodes_to_add = min( self.max_nodes - num_nodes, \
-                                    (max_slots_requested - num_slots) / \
-                                        SLOTS_PER_HOST)
+                                    int(math.ceil( \
+                                        float(max_slots_requested - num_slots) / \
+                                        SLOTS_PER_HOST)))
                 log.info('Condition A met: Adding %d nodes to cluster' % \
                     nodes_to_add)
                 self._cluster.add_nodes(nodes_to_add, [])
@@ -734,8 +820,9 @@ class SGELoadBalancer(LoadBalancer):
             elif total_slots_requested > num_slots:
                 nodes_to_add = min( self.max_nodes - num_nodes, \
                                     self.maximum_add_nodes_per_iteration, \
-                                    (total_slots_requested - num_slots) / \
-                                        SLOTS_PER_HOST)
+                                    int(math.ceil( \
+                                        float(total_slots_requested - num_slots) / \
+                                        SLOTS_PER_HOST)))
                 log.info('Condition B met: Adding %d nodes to cluster' % \
                     nodes_to_add)
                 self._cluster.add_nodes(nodes_to_add, [])
