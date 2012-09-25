@@ -945,7 +945,7 @@ class Cluster(object):
         mtype = self.master_instance_type or self.node_instance_type
         self.master_instance_type = mtype
         if self.spot_bid:
-            self._create_spot_cluster()
+            return self._create_spot_cluster()
         else:
             self._create_flat_rate_cluster()
 
@@ -1009,13 +1009,16 @@ class Cluster(object):
             zone = master_response.instances[0].placement
         if self.cluster_size <= 1:
             return
+        resvs = []
         for id in range(1, self.cluster_size):
             alias = 'node%.3d' % id
             (ntype, nimage) = self._get_type_and_image_id(alias)
             log.info("Launching %s (ami: %s, type: %s)" %
                      (alias, nimage, ntype))
-            self.create_node(alias, image_id=nimage, instance_type=ntype,
+            resv = self.create_node(alias, image_id=nimage, instance_type=ntype,
                              zone=zone)
+            resvs.append(resv)
+        return resvs
 
     def is_spot_cluster(self):
         """
@@ -1168,13 +1171,19 @@ class Cluster(object):
         'active'.
         """
         if spots:
-            spots = list(set(spots + self.spot_requests))
-#             for spot in spots: # Remove possible duplicates.
-#                 print sum([str(s) == str(spot) for s in spots])
-#                 if sum([str(s) == str(spot) for s in spots]) > 1:
-#                     spots.remove(spot)
+            spots = spots + self.spot_requests
         else: 
             spots = self.spot_requests
+
+        # Get unique reservation names in order to remove duplicate reservations.
+        spot_ids = list(set([str(s) for s in spots]))
+        unique_spots = []
+        for spot in spots:
+            if str(spot) in spot_ids:
+                spot_ids.remove(str(spot))
+                unique_spots.append(spot)
+            
+        spots = unique_spots
 
         open_spots = [spot for spot in spots if spot.state == "open"]
         if open_spots:
@@ -1434,23 +1443,24 @@ class Cluster(object):
         """
         log.info("Starting cluster...")
         if create:
-            self.create_cluster()
+            resvs = self.create_cluster()
         else:
+            resvs = None
             assert self.master_node is not None
             for node in self.stopped_nodes:
                 log.info("Starting stopped node: %s" % node.alias)
                 node.start()
         if create_only:
             return
-        self.setup_cluster()
+        self.setup_cluster(spots=resvs)
 
-    def setup_cluster(self):
+    def setup_cluster(self, spots=None):
         """
         Waits for all nodes to come up and then runs the default
         StarCluster setup routines followed by any additional plugin setup
         routines
         """
-        self.wait_for_cluster()
+        self.wait_for_cluster(spots=spots)
         self._setup_cluster()
 
     @print_timing("Configuring cluster")
