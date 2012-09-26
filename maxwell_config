@@ -26,7 +26,7 @@ NODE_IMAGE_ID = ami-2d328144
 SPOT_BID = 2.00
 
 MASTER_INSTANCE_TYPE = m1.small
-MASTER_IMAGE_ID = ami-735be91a
+MASTER_IMAGE_ID = ami-df5be9b6
 
 # Remove and re-add grid engine so we can customize it.
 disable_queue = True
