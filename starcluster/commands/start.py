@@ -197,6 +197,6 @@ class CmdStart(ClusterCompleter):
         if not create_only and not self.opts.login_master:
             log.info(user_msgs.cluster_started_msg %
                      dict(tag=scluster.cluster_tag),
-                     extra=dict(__textwrap__=True, __raw__=True))
+                     extra=dict(__textwrap__=True))
         if self.opts.login_master:
             scluster.ssh_to_master()

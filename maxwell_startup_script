@@ -1,8 +1,0 @@
-#! /bin/sh
-# Start up a cluster
-clustername=m$1
-cp /home/ubuntu/StarCluster/maxwell_config /home/ubuntu/.starcluster/config
-. /home/ubuntu/maxwell_control/bin/activate
-mkdir /home/ubuntu/log
-mkdir /home/ubuntu/log/plot
-starcluster start $clustername && starcluster loadbalance -dp --dump-stats-file=/home/ubuntu/log/stats --plot-output-dir=/home/ubuntu/log/plots --max_nodes=50 --max_add_nodes_per_iter=5 --interval=15 $clustername

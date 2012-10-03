@@ -21,11 +21,16 @@ from starcluster import optcomplete
 from starcluster.logger import log, console, session
 from starcluster import __version__
 
+
 __description__ = """
 StarCluster - (http://web.mit.edu/starcluster) (v. %s)
 Software Tools for Academics and Researchers (STAR)
 Please submit bug reports to starcluster@mit.edu
 """ % __version__
+
+# New description
+__description__ = \
+    "Maxwell-customized StarCluster (http://web.mit.edu/starcluster)."
 
 
 class StarClusterCLI(object):

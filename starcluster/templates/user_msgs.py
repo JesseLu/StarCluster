@@ -48,36 +48,37 @@ without wasting instance hours.
 
 """
 
-cluster_started_msg = """
-The cluster is now ready to use. To login to the master node as root, run:
-
-    $ starcluster sshmaster %(tag)s
-
-If you're having issues with the cluster you can reboot the instances and \
-completely reconfigure the cluster from scratch using:
-
-    $ starcluster restart %(tag)s
-
-When you're finished using the cluster and wish to terminate it and stop \
-paying for service:
-
-    $ starcluster terminate %(tag)s
-
-Alternatively, if the cluster uses EBS instances, you can use the 'stop' \
-command to shutdown all nodes and put them into a 'stopped' state preserving \
-the EBS volumes backing the nodes:
-
-    $ starcluster stop %(tag)s
-
-WARNING: Any data stored in ephemeral storage (usually /mnt) will be lost!
-
-You can activate a 'stopped' cluster by passing the -x option to the 'start' \
-command:
-
-    $ starcluster start -x %(tag)s
-
-This will start all 'stopped' nodes and reconfigure the cluster.
-"""
+cluster_started_msg = "Cluster %(tag)s startup successful."
+# cluster_started_msg = """
+# The cluster is now ready to use. To login to the master node as root, run:
+# 
+#     $ starcluster sshmaster %(tag)s
+# 
+# If you're having issues with the cluster you can reboot the instances and \
+# completely reconfigure the cluster from scratch using:
+# 
+#     $ starcluster restart %(tag)s
+# 
+# When you're finished using the cluster and wish to terminate it and stop \
+# paying for service:
+# 
+#     $ starcluster terminate %(tag)s
+# 
+# Alternatively, if the cluster uses EBS instances, you can use the 'stop' \
+# command to shutdown all nodes and put them into a 'stopped' state preserving \
+# the EBS volumes backing the nodes:
+# 
+#     $ starcluster stop %(tag)s
+# 
+# WARNING: Any data stored in ephemeral storage (usually /mnt) will be lost!
+# 
+# You can activate a 'stopped' cluster by passing the -x option to the 'start' \
+# command:
+# 
+#     $ starcluster start -x %(tag)s
+# 
+# This will start all 'stopped' nodes and reconfigure the cluster.
+# """
 
 spotmsg = """SPOT INSTANCES ARE NOT GUARANTEED TO COME UP
 
