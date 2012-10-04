@@ -66,6 +66,9 @@ class CmdStart(ClusterCompleter):
                           "a flat-rate instance for stability. this option "
                           "forces launching the master node as a spot "
                           "instance when a spot cluster is requested.")
+        parser.add_option("-M", "--master-run", dest="master_cmd",
+                          action="store", default=None,
+                          help="commands to execute on master")
         opt = parser.add_option("-c", "--cluster-template", action="store",
                                 dest="cluster_template", choices=templates,
                                 default=None, help="cluster template to use "
@@ -200,3 +203,8 @@ class CmdStart(ClusterCompleter):
                      extra=dict(__textwrap__=True))
         if self.opts.login_master:
             scluster.ssh_to_master()
+
+        cmd = self.opts.master_cmd
+        if cmd:
+            log.info("Executing '%s' on master: %s" % \
+                        (cmd, "\n".join(scluster._master.ssh.execute(cmd))))
