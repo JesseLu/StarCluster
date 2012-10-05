@@ -1378,6 +1378,7 @@ class Cluster(object):
         instances, canceling all spot requests (if any), removing its placement
         group (if any), and removing its security group.
         """
+        log.info("Terminating cluster %s..." % self.cluster_tag)
         try:
             self.run_plugins(method_name="on_shutdown", reverse=True)
         except exception.MasterDoesNotExist, e:

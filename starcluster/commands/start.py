@@ -206,5 +206,6 @@ class CmdStart(ClusterCompleter):
 
         cmd = self.opts.master_cmd
         if cmd:
-            log.info("Executing '%s' on master: %s" % \
-                        (cmd, "\n".join(scluster._master.ssh.execute(cmd))))
+            log.info("Executing '%s' on master..." % cmd)
+#             log.info("Executing '%s' on master: %s" % \
+#                         (cmd, "\n".join(scluster._master.ssh.execute(cmd))))
