@@ -296,6 +296,7 @@ class ProgressBar(ProgressBarBase):
     def __init__(self, maxval=100, widgets=default_widgets, term_width=79,
                  fd=sys.stderr, force_update=False):
         super(ProgressBar, self).__init__(maxval, force_update=force_update)
+        self.prev_len = 0 
         self.widgets = widgets
         self.fd = fd
         self.signal_set = False
@@ -341,8 +342,21 @@ class ProgressBar(ProgressBarBase):
     def update(self, value):
         "Updates the progress bar to a new value."
         super(ProgressBar, self).update(value)
-        term = '\r' if value != self.maxval else '\n'
-        self.fd.write(self._format_line() + term)
+
+        head = '\b' * self.prev_len
+        line = self._format_line()
+        if value != self.maxval:
+            term = ''
+            self.prev_len = len(line)
+        else:
+            term = '\n'
+            self.prev_len = 0
+
+        # term = '' if value != self.maxval else '\n'
+        # self.fd.write(self._format_line() + term)
+
+        self.fd.write(head + line + term)
+
 
     def finish(self):
         """Used to tell the progress is finished."""
