@@ -204,9 +204,10 @@ class CmdStart(ClusterCompleter):
         if self.opts.login_master:
             scluster.ssh_to_master()
 
-        cmd = self.opts.master_cmd
+        cmd = (self.opts.master_cmd).\
+                    replace('$MASTER_DNS', scluster._master.dns_name)
         if cmd:
-            log.info("Executing '%s' on master..." % cmd)
-            scluster._master.ssh.execute(cmd, source_profile=True)
+            log.info("Executing '%s' on master...\n%s" % (cmd, \
+                "\n".join(scluster._master.ssh.execute(cmd, source_profile=True))))
 #             log.info("Executing '%s' on master: %s" % \
 #                         (cmd, "\n".join(scluster._master.ssh.execute(cmd))))

@@ -1393,7 +1393,7 @@ class Cluster(object):
                 spot.cancel()
         sg = self.ec2.get_group_or_none(self._security_group)
         pg = self.ec2.get_placement_group_or_none(self._security_group)
-        s = self.get_spinner("Waiting for cluster to terminate...")
+        s = self.get_spinner("Waiting for cluster to terminate...\n->")
         while not self.is_cluster_terminated():
             time.sleep(5)
         s.stop()
