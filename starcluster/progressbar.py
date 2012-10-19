@@ -311,7 +311,8 @@ class ProgressBar(ProgressBarBase):
             self.term_width = term_width
 
     def handle_resize(self, signum, frame):
-        h, w = array('h', ioctl(self.fd, termios.TIOCGWINSZ, '\0' * 8))[:2]
+        # h, w = array('h', ioctl(self.fd, termios.TIOCGWINSZ, '\0' * 8))[:2]
+        h, w = array('h', ioctl(self.fd, termios.TIOCGWINSZ, '' * 8))[:2]
         self.term_width = w
 
     def _format_widgets(self):

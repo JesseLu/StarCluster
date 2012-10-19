@@ -69,6 +69,9 @@ class CmdStart(ClusterCompleter):
         parser.add_option("-M", "--master-run", dest="master_cmd",
                           action="store", default=None,
                           help="commands to execute on master")
+        parser.add_option("-P", "--master-put", dest="file_to_master",
+                          action="store", default=None,
+                          help="file to be loaded onto master")
         opt = parser.add_option("-c", "--cluster-template", action="store",
                                 dest="cluster_template", choices=templates,
                                 default=None, help="cluster template to use "
@@ -204,9 +207,15 @@ class CmdStart(ClusterCompleter):
         if self.opts.login_master:
             scluster.ssh_to_master()
 
-        cmd = (self.opts.master_cmd).\
-                    replace('$MASTER_DNS', scluster._master.dns_name)
-        if cmd:
+        # Process the master put.
+        if self.opts.file_to_master:
+            log.info("Loading '%s' to master...\n" % self.opts.file_to_master) 
+            scluster._master.ssh.put(self.opts.file_to_master, ".")
+
+        # Process the master command.
+        if self.opts.master_cmd:
+            cmd = (self.opts.master_cmd).\
+                        replace('$MASTER_DNS', scluster._master.dns_name)
             log.info("Executing '%s' on master...\n%s" % (cmd, \
                 "\n".join(scluster._master.ssh.execute(cmd, source_profile=True))))
 #             log.info("Executing '%s' on master: %s" % \
