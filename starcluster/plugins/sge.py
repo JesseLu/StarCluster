@@ -112,7 +112,8 @@ class SGEPlugin(clustersetup.DefaultClusterSetup):
 
         # Create the custom maxwell.q.
         # This assumes 2 processors/GPUs per node.
-        master.ssh.execute("""qconf -sq all.q | sed 's/all.q/maxwell.q/' > /tmp/maxwell_queue && qconf -Aq /tmp/maxwell_queue && qconf -mattr queue slots 2 maxwell.q""", source_profile=True)
+        # h_cpu is the maximum time per job in seconds (set to one hour).
+        master.ssh.execute("""qconf -sq all.q | sed 's/all.q/maxwell.q/' > /tmp/maxwell_queue && qconf -Aq /tmp/maxwell_queue && qconf -mattr queue slots 2 maxwell.q && qconf -mattr queue h_cpu 3600 maxwell.q""", source_profile=True)
 
         for node in self.nodes:
             self._add_sge_admin_host(node)

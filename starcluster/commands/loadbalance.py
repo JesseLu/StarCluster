@@ -53,17 +53,17 @@ class CmdLoadBalance(ClusterCompleter):
                           help="Load balancer polling interval in seconds "
                           "(max: 300s)")
         parser.add_option("-m", "--max_nodes", dest="max_nodes",
-                          action="store", type="int", default=None,
+                          action="store", type="int", default=10,
                           help="Maximum # of nodes in cluster")
         parser.add_option("-w", "--job_wait_time", dest="wait_time",
-                          action="store", type="int", default=None,
+                          action="store", type="int", default=300,
                           help=("Maximum wait time for a job before "
                                 "adding nodes, seconds"))
         parser.add_option("-a", "--add_nodes_per_iter", dest="add_pi",
-                          action="store", type="int", default=None,
+                          action="store", type="int", default=1,
                           help="Number of nodes to add per iteration")
         parser.add_option("-A", "--max_add_nodes_per_iter", dest="max_increment",
-                          action="store", type="int", default=None,
+                          action="store", type="int", default=1,
                           help="Maximum number of nodes that can be added at once")
         parser.add_option("-k", "--kill_after", dest="kill_after",
                           action="store", type="int", default=None,

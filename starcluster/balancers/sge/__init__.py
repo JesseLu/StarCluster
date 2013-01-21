@@ -828,19 +828,20 @@ class SGELoadBalancer(LoadBalancer):
         log.info('Longest job waiting time: %s' % max_waiting_time, extra=raw)
 
         if num_nodes < self.max_nodes:
-            # Condition A: Add nodes to fit largest job.
-            if max_slots_requested > num_slots:
-                nodes_to_add = min( self.max_nodes - num_nodes, \
-                                    int(math.ceil( \
-                                        float(max_slots_requested - num_slots) / \
-                                        SLOTS_PER_HOST)))
-                log.info('Condition A met: Adding %d nodes to cluster' % \
-                    nodes_to_add)
-                self._cluster.add_nodes(nodes_to_add, [])
-                return
+#             # Condition A: Add nodes to fit largest job.
+#             if max_slots_requested > num_slots:
+#                 nodes_to_add = min( self.max_nodes - num_nodes, \
+#                                     int(math.ceil( \
+#                                         float(max_slots_requested - num_slots) / \
+#                                         SLOTS_PER_HOST)))
+#                 log.info('Condition A met: Adding %d nodes to cluster' % \
+#                     nodes_to_add)
+#                 self._cluster.add_nodes(nodes_to_add, [])
+#                 return
 
             # Condition B: Add nodes to fit the total number of nodes requested.
-            elif total_slots_requested > num_slots:
+            # elif total_slots_requested > num_slots:
+            if total_slots_requested > num_slots:
                 nodes_to_add = min( self.max_nodes - num_nodes, \
                                     self.maximum_add_nodes_per_iteration, \
                                     int(math.ceil( \
